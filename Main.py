@@ -48,9 +48,18 @@ def mutualDistCalc(y, x0, col): #finds distribution for y[col] from series x0[co
     dist = min(n / p0) * p0
     return dist.astype(int)
 
+def dropExcessiveRaws(y, x0, col): #drop from y raws to get the same distribution for col as in x0
+    col_p = mutualDistCalc(y, x0, col) / y[col].value_counts() #bernulli distribution coefficient, i. e. probabilities of occurence for values in col
+    col_p.name = col + "_p" #just for joining
+    y = pd.merge(y, col_p.reset_index(), left_on = col, right_on = "index") #join probabilities to the target dataframe y
+    y.drop("index", 1, inplace = True)
+    y["Drop"] = np.random.binomial(n = 1, size = y.shape[0], p = y[col + "_p"]) #choosing the raws to drop
+    y = y[y.Drop == 1] #dropping the raws
+    y.drop(["Drop", col + "_p"], 1, inplace = True)
+    return y
+
 ################
-#Calculations
-################
+#Reading
 dir_name = "C:\\PyCharm Community Edition 5.0.3\\Projects\\CrisisModeling\\"
 files = getFileNames(dir_name)
 x_flat = pd.DataFrame()
@@ -64,24 +73,40 @@ for f in files:
     else: # if hierarchy
         x_hier = x_hier.append(x1.drop("OrgSt", 1), ignore_index = True)
 
-
-#x_flat.reset_index()
-#x_hier.reset_index()
+#Transforming
+x_hier.rename(columns = {"-1" : "TpT"}, inplace = True)
+x_flat.rename(columns = {"-1" : "TpT"}, inplace = True)
 
 x_hier = x_hier[(x_hier["NEmps"] >= min_emp) & (x_hier["NEmps"] <= max_emp)] #change to distribution of nemps in x_flat
+x_hier = dropExcessiveRaws(x_hier, x_flat, "NEmps")
 
-nemp_p = mutualDistCalc(x_hier, x_flat, "NEmps") / x_hier.NEmps.value_counts() #bernulli distribution coefficient
-nemp_p.name = "NEmps_p"
-x_hier = pd.merge(x_hier, nemp_p.reset_index(), left_on = "NEmps", right_on = "index")
-x_hier.drop("index", 1, inplace = True)
-x_hier["Drop"] = np.random.binomial(n = 1, size = x_hier.shape[0], p = x_hier.NEmps_p)
-x_hier = x_hier[x_hier.Drop == 1]
-x_hier.drop("Drop", 1, inplace = True)
+#Aggregating
+#SigCaught ~ NSigs
+h_nu_nsigs = x_hier["SigCaught"].groupby([x_hier["NSigs"], x_hier["Mode"]]).mean()
+f_nu_nsigs = x_flat["SigCaught"].groupby([x_flat["NSigs"], x_flat["Mode"]]).mean()
+h_nu_nemps = x_hier["SigCaught"].groupby([x_hier["NEmps"], x_hier["Mode"]]).mean()
+f_nu_nemps = x_flat["SigCaught"].groupby([x_flat["NEmps"], x_flat["Mode"]]).mean()
+
+h_eta_nsigs = x_hier["TpT"].groupby([x_hier["NSigs"], x_hier["Mode"]]).mean()
+f_eta_nsigs = x_flat["TpT"].groupby([x_flat["NSigs"], x_flat["Mode"]]).mean()
+h_eta_nemps = x_hier["TpT"].groupby([x_hier["NEmps"], x_hier["Mode"]]).mean()
+f_eta_nemps = x_flat["TpT"].groupby([x_flat["NEmps"], x_flat["Mode"]]).mean()
 
 #print(x_flat.describe())
-#print(x_hier.describe())
+print(x_hier.describe())
 
 #x_flat.to_csv(dir_name + "0Results.Flat.csv")
 #x_hier.to_csv(dir_name + "0Results.Hierarchy.csv")
 
 #sys.modules[__name__].__dict__.clear()
+
+
+
+#Dropping excessive raws in x_hier to make NEmps equal
+# nemp_p = mutualDistCalc(x_hier, x_flat, "NEmps") / x_hier.NEmps.value_counts() #bernulli distribution coefficient
+# nemp_p.name = "NEmps_p"
+# x_hier = pd.merge(x_hier, nemp_p.reset_index(), left_on = "NEmps", right_on = "index")
+# x_hier.drop("index", 1, inplace = True)
+# x_hier["Drop"] = np.random.binomial(n = 1, size = x_hier.shape[0], p = x_hier.NEmps_p)
+# x_hier = x_hier[x_hier.Drop == 1]
+# x_hier.drop("Drop", 1, inplace = True)
