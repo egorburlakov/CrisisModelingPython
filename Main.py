@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from os import listdir
 from os.path import isfile, join
+import matplotlib.pyplot as plt
 
 ################
 #Pars
@@ -31,10 +32,8 @@ def decodePar(s):
     return 3
 
 def processFile(dir_name, f):
-    x1 = pd.read_csv(dir_name + f, sep = ";", dtype = dat_types)
-    x1 = x1[pars_pres]
+    x1 = pd.read_csv(dir_name + f, sep = ";", dtype = dat_types, usecols = pars_pres)
     x1 = x1[pd.notnull(x1['SigCaught'])]
-    #x1 = x1[np.isfinite(x1['SigCaught'])]
 
     pars_add = f.split('=')
     x1["OrgSt"] = decodePar(pars_add[1][:2])
@@ -76,24 +75,67 @@ for f in files:
 #Transforming
 x_hier.rename(columns = {"-1" : "TpT"}, inplace = True)
 x_flat.rename(columns = {"-1" : "TpT"}, inplace = True)
+x_hier["TpLoad"] = x_hier["TpT"] / x_hier["CrT"]
+x_flat["TpLoad"] = x_flat["TpT"] / x_hier["CrT"]
 
 x_hier = x_hier[(x_hier["NEmps"] >= min_emp) & (x_hier["NEmps"] <= max_emp)] #change to distribution of nemps in x_flat
 x_hier = dropExcessiveRaws(x_hier, x_flat, "NEmps")
 
 #Aggregating
-#SigCaught ~ NSigs
-h_nu_nsigs = x_hier["SigCaught"].groupby([x_hier["NSigs"], x_hier["Mode"]]).mean()
-f_nu_nsigs = x_flat["SigCaught"].groupby([x_flat["NSigs"], x_flat["Mode"]]).mean()
-h_nu_nemps = x_hier["SigCaught"].groupby([x_hier["NEmps"], x_hier["Mode"]]).mean()
-f_nu_nemps = x_flat["SigCaught"].groupby([x_flat["NEmps"], x_flat["Mode"]]).mean()
+h_nu_nsigs = x_hier["SigCaught"].groupby([x_hier["NSigs"], x_hier["Mode"]]).mean().unstack()
+f_nu_nsigs = x_flat["SigCaught"].groupby([x_flat["NSigs"], x_flat["Mode"]]).mean().unstack()
+h_nu_nemps = x_hier["SigCaught"].groupby([x_hier["NEmps"], x_hier["Cr"], x_hier["Mode"]]).mean().unstack().reset_index()
+f_nu_nemps = x_flat["SigCaught"].groupby([x_flat["NEmps"], x_flat["Cr"], x_flat["Mode"]]).mean().unstack().reset_index()
 
-h_eta_nsigs = x_hier["TpT"].groupby([x_hier["NSigs"], x_hier["Mode"]]).mean()
-f_eta_nsigs = x_flat["TpT"].groupby([x_flat["NSigs"], x_flat["Mode"]]).mean()
-h_eta_nemps = x_hier["TpT"].groupby([x_hier["NEmps"], x_hier["Mode"]]).mean()
-f_eta_nemps = x_flat["TpT"].groupby([x_flat["NEmps"], x_flat["Mode"]]).mean()
+h_eta_nsigs = x_hier["TpLoad"].groupby([x_hier["NSigs"], x_hier["Mode"]]).mean().unstack()
+f_eta_nsigs = x_flat["TpLoad"].groupby([x_flat["NSigs"], x_flat["Mode"]]).mean().unstack()
+h_eta_nemps = x_hier["TpLoad"].groupby([x_hier["NEmps"], x_hier["Mode"]]).mean().unstack()
+f_eta_nemps = x_flat["TpLoad"].groupby([x_flat["NEmps"], x_flat["Mode"]]).mean().unstack()
+
+#Printing
+#, ticks = [3, 5, 7, 9, 11, 13, 15, 17, 19]
+fig = plt.figure(facecolor = "white")
+#fig.subplots_adjust(wspace = 0, hspace = 0)
+ax1 = fig.add_subplot(2, 2, 1)
+plt.plot(h_nu_nsigs.index, h_nu_nsigs[2], linestyle = "--", marker = "o", color = "g", label = "Centralized")
+plt.plot(f_nu_nsigs.index, f_nu_nsigs[2], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
+ax1.legend(loc = "best", fontsize = 11)
+ax1.set_ylabel(r'$\nu$', fontsize = 20)
+ax1.set_xlabel("N of Signals", fontsize = 16)
+
+ax2 = fig.add_subplot(2, 2, 2)
+plt.plot(h_nu_nemps[h_nu_nemps.Cr == 1].NEmps, h_nu_nemps[h_nu_nemps.Cr == 1].ix[:,3], linestyle = "--", marker = "o", color = "g", label = "Centralized")
+plt.plot(f_nu_nemps[h_nu_nemps.Cr == 1].NEmps, f_nu_nemps[h_nu_nemps.Cr == 1].ix[:,3], linestyle = "-", marker = "^", color = "g", label = "Decentralized")
+ax2.legend(loc = "best", fontsize = 11)
+plt.plot(h_nu_nemps[h_nu_nemps.Cr == 2].NEmps, h_nu_nemps[h_nu_nemps.Cr == 2].ix[:,3], linestyle = "--", marker = "o", color = "r", label = "Centralized")
+plt.plot(f_nu_nemps[h_nu_nemps.Cr == 2].NEmps, f_nu_nemps[h_nu_nemps.Cr == 2].ix[:,3], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
+ax2.set_ylabel(r'$\nu$', fontsize = 20)
+ax2.set_xlabel("N of Employees", fontsize = 16)
+
+ax3 = fig.add_subplot(2, 2, 3)
+plt.plot(h_eta_nsigs.index, h_eta_nsigs[2], linestyle = "--", marker = "o", color = "g", label = "Centralized")
+plt.plot(f_eta_nsigs.index, f_eta_nsigs[2], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
+ax3.legend(loc = "best", fontsize = 11)
+ax3.set_ylabel(r'$\eta$', fontsize = 20)
+ax3.set_xlabel("N of Signals", fontsize = 16)
+
+
+
+ax4 = fig.add_subplot(2, 2, 4)
+plt.plot(h_eta_nsigs.index, h_eta_nsigs[1], linestyle = "--", marker = "o", color = "g", label = "Centralized", linewidth = 1)
+plt.plot(h_eta_nsigs.index, h_eta_nsigs[2], linestyle = "--", marker = "o", color = (0, 0.5, 0), label = "Centralized", linewidth = 3)
+plt.plot(h_eta_nsigs.index, h_eta_nsigs[3], linestyle = "--", marker = "o", color = "g", label = "Centralized", linewidth = 1)
+
+plt.plot(f_eta_nsigs.index, f_eta_nsigs[1], linestyle = "-", marker = "^", color = "r", label = "Decentralized", linewidth = 1)
+plt.plot(f_eta_nsigs.index, f_eta_nsigs[2], linestyle = "-", marker = "^", color = (0.5, 0, 0), label = "Decentralized", linewidth = 3)
+plt.plot(f_eta_nsigs.index, f_eta_nsigs[3], linestyle = "-", marker = "^", color = "r", label = "Decentralized", linewidth = 1)
+#ax4.legend(loc = "best", fontsize = 11)
+ax4.set_ylabel(r'$\eta$', fontsize = 20)
+ax4.set_xlabel("N of Signals", fontsize = 16)
+
 
 #print(x_flat.describe())
-print(x_hier.describe())
+#print(x_hier.describe())
 
 #x_flat.to_csv(dir_name + "0Results.Flat.csv")
 #x_hier.to_csv(dir_name + "0Results.Hierarchy.csv")
