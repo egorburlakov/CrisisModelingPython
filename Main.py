@@ -75,7 +75,7 @@ def readInitialFiles(dir_name):
     
     #Transforming
     hier = hier[(hier["NEmps"] >= min_emp) & (hier["NEmps"] <= max_emp)] #change to distribution of nemps in flat
-#    hier = dropExcessiveRaws(hier, flat, "NEmps")
+    hier = dropExcessiveRaws(hier, flat, "NEmps")
     
     hier.rename(columns = {"-1" : "TpT"}, inplace = True)
     flat.rename(columns = {"-1" : "TpT"}, inplace = True)
@@ -92,13 +92,13 @@ def readProcessedFiles(dir_name):
     return flat, hier
 
 dir_name = "C:\\PyCharm Community Edition 5.0.3\\Projects\\CrisisModeling\\"
-all = readProcessedFiles("C:\\PyCharm Community Edition 5.0.3\\Projects\\CrisisModeling\\")
-flat = all[0]
-hier = all[1]
-
-#all = readInitialFiles(dir_name)
+#all = readProcessedFiles("C:\\PyCharm Community Edition 5.0.3\\Projects\\CrisisModeling\\")
 #flat = all[0]
 #hier = all[1]
+
+all = readInitialFiles(dir_name)
+flat = all[0]
+hier = all[1]
 #hier = hier.append(all[0], ignore_index = True)
 #flat = flat.append(all[1], ignore_index = True)
 
@@ -107,7 +107,11 @@ hier = all[1]
 #hier.to_csv(dir_name + "0Results.Hier.csv", mode = "a")
 #flat.to_csv(dir_name + "0Results.Flat.csv", mode = "a")
 
-#Aggregating
+
+f_eta_empsig = flat["TpLoad"].groupby([flat["NSigs"], flat["NEmps"], flat["Mode"]]).mean().unstack()
+h_eta_empsig = hier["TpLoad"].groupby([hier["NSigs"], hier["NEmps"], hier["Mode"]]).mean().unstack()
+f_eta_empsig .xs((8), level = ("NSigs"))[2]
+
 h_nu_nsigs = hier["SigCaught"].groupby([hier["NSigs"], hier["Mode"]]).mean().unstack()
 f_nu_nsigs = flat["SigCaught"].groupby([flat["NSigs"], flat["Mode"]]).mean().unstack()
 h_nu_nemps = hier["SigCaught"].groupby([hier["NEmps"], hier["Cr"], hier["Mode"]]).mean().unstack().reset_index()
@@ -120,64 +124,109 @@ f_eta_nemps = flat["TpLoad"].groupby([flat["NEmps"], flat["Mode"]]).mean().unsta
 
 #Printing
 #, ticks = [3, 5, 7, 9, 11, 13, 15, 17, 19]
-fig = plt.figure(facecolor = "white")
 #fig.subplots_adjust(wspace = 0, hspace = 0)
-ax1 = fig.add_subplot(2, 2, 1)
-plt.plot(h_nu_nsigs.index, h_nu_nsigs[2], linestyle = "--", marker = "o", color = (0, 0.5, 0), label = "Centralized", linewidth = 3)
-plt.plot(f_nu_nsigs.index, f_nu_nsigs[2], linestyle = "-", marker = "^" , color = (0.5, 0, 0), label = "Decentralized", linewidth = 3)
-ax1.legend(loc = "best", fontsize = 11)
+###################
+#1
+###################
+fig = plt.figure(facecolor = "white")
+ax0 = fig.add_subplot(1, 1, 1)
+plt.plot(h_nu_nsigs.index[0:5], h_nu_nsigs[2][0:5], linestyle = "--", marker = "o", color = "green", label = "Centralized")
+plt.plot(f_nu_nsigs.index[0:5], f_nu_nsigs[2][0:5], linestyle = "-", marker = "^" , color = "red", label = "Decentralized")
+ax0.legend(loc = "best", fontsize = 11)
+plt.plot(h_nu_nsigs.index[5:16], h_nu_nsigs[2][5:16], linestyle = "--", marker = "o", color = "green", label = "Centralized")
+plt.plot(f_nu_nsigs.index[5:16], f_nu_nsigs[2][5:16], linestyle = "-", marker = "^" , color = "red", label = "Decentralized")
+plt.axvline(7.5, color ='k', linestyle='--')
+plt.grid()
+plt.show()
 
-plt.plot(h_nu_nsigs.index, h_nu_nsigs[1], linestyle = "--", marker = "o", color = "g", label = "Centralized")
-plt.plot(h_nu_nsigs.index, h_nu_nsigs[3], linestyle = "--", marker = "o", color = "g", label = "Centralized")
-plt.plot(f_nu_nsigs.index, f_nu_nsigs[1], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
-plt.plot(f_nu_nsigs.index, f_nu_nsigs[3], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
-ax1.set_ylabel(r'$\eta$', fontsize = 20)
-ax1.set_xlabel("N of Signals", fontsize = 16)
+###################
+#2
+###################
+fig = plt.figure(facecolor = "white")
+ax1 = fig.add_subplot(1, 1, 1)
+plt.plot(h_nu_nsigs.index[5:16], h_nu_nsigs[3][5:16], linestyle = "--", marker = "o", color = "g", label = "Centralized")
+plt.plot(f_nu_nsigs.index[5:16], f_nu_nsigs[3][5:16], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
+ax1.legend(loc = "upper left", fontsize = 11)
+plt.plot(h_nu_nsigs.index[0:5], h_nu_nsigs[3][0:5], linestyle = "--", marker = "o", color = "g", label = "Centralized")
+plt.plot(f_nu_nsigs.index[0:5], f_nu_nsigs[3][0:5], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
 
-ax2 = fig.add_subplot(2, 2, 2)
+plt.plot(h_nu_nsigs.index[0:5], h_nu_nsigs[1][0:5], linestyle = "--", marker = "o", color = "g", label = "Centralized")
+plt.plot(h_nu_nsigs.index[5:16], h_nu_nsigs[1][5:16], linestyle = "--", marker = "o", color = "g", label = "Centralized")
+plt.plot(f_nu_nsigs.index[0:5], f_nu_nsigs[1][0:5], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
+plt.plot(f_nu_nsigs.index[5:16], f_nu_nsigs[1][5:16], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
+
+plt.plot(h_nu_nsigs.index[0:5], h_nu_nsigs[2][0:5], linestyle = "--", marker = "o", color = (0, 0.5, 0), label = "Centralized", linewidth = 3)
+plt.plot(h_nu_nsigs.index[5:16], h_nu_nsigs[2][5:16], linestyle = "--", marker = "o", color = (0, 0.5, 0), label = "Centralized", linewidth = 3)
+plt.plot(f_nu_nsigs.index[0:5], f_nu_nsigs[2][0:5], linestyle = "-", marker = "^" , color = (0.5, 0, 0), label = "Decentralized", linewidth = 3)
+plt.plot(f_nu_nsigs.index[5:16], f_nu_nsigs[2][5:16], linestyle = "-", marker = "^" , color = (0.5, 0, 0), label = "Decentralized", linewidth = 3)
+
+#ax1.set_ylabel(r'$\eta$', fontsize = 20)
+#ax1.set_xlabel("N of Signals", fontsize = 16)
+plt.axvline(7.5, color ='k', linestyle='--')
+plt.grid()
+plt.show()
+
+
+###################
+#3
+###################
+fig = plt.figure(facecolor = "white")
+ax2 = fig.add_subplot(1, 1, 1)
 plt.plot(h_nu_nemps[h_nu_nemps.Cr == 1].NEmps, h_nu_nemps[h_nu_nemps.Cr == 1].ix[:,3], linestyle = "--", marker = "o", color = "g", label = "Centralized")
 plt.plot(f_nu_nemps[h_nu_nemps.Cr == 1].NEmps, f_nu_nemps[h_nu_nemps.Cr == 1].ix[:,3], linestyle = "-", marker = "^", color = "g", label = "Decentralized")
-ax2.legend(loc = "best", fontsize = 11)
+ax2.legend(loc = "upper left", fontsize = 11)
 plt.plot(h_nu_nemps[h_nu_nemps.Cr == 2].NEmps, h_nu_nemps[h_nu_nemps.Cr == 2].ix[:,3], linestyle = "--", marker = "o", color = "r", label = "Centralized")
 plt.plot(f_nu_nemps[h_nu_nemps.Cr == 2].NEmps, f_nu_nemps[h_nu_nemps.Cr == 2].ix[:,3], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
-ax2.set_ylabel(r'$\eta$', fontsize = 20)
-ax2.set_xlabel("N of Employees", fontsize = 16)
 
-ax3 = fig.add_subplot(2, 2, 3)
-plt.plot(h_eta_nsigs.index, h_eta_nsigs[2], linestyle = "--", marker = "o", color = "g", label = "Centralized")
-plt.plot(f_eta_nsigs.index, f_eta_nsigs[2], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
+#ax2.set_ylabel(r'$\eta$', fontsize = 20)
+#ax2.set_xlabel("N of Employees", fontsize = 16)
+plt.grid()
+plt.show()
+
+###################
+#4
+###################
+fig = plt.figure(facecolor = "white")
+ax3 = fig.add_subplot(1, 1, 1)
+plt.plot(h_eta_nsigs.index[0:5], h_eta_nsigs[2][0:5], linestyle = "--", marker = "o", color = "g", label = "Centralized")
+plt.plot(f_eta_nsigs.index[0:5], f_eta_nsigs[2][0:5], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
 ax3.legend(loc = "best", fontsize = 11)
-ax3.set_ylabel(r'$\nu$', fontsize = 20)
-ax3.set_xlabel("N of Signals", fontsize = 16)
+plt.plot(h_eta_nsigs.index[5:16], h_eta_nsigs[2][5:16], linestyle = "--", marker = "o", color = "g", label = "Centralized")
+plt.plot(f_eta_nsigs.index[5:16], f_eta_nsigs[2][5:16], linestyle = "-", marker = "^", color = "r", label = "Decentralized")
 
+#ax3.set_ylabel(r'$\nu$', fontsize = 20)
+#ax3.set_xlabel("N of Signals", fontsize = 16)
+plt.axvline(7.5, color ='k', linestyle='--')
+plt.grid()
+plt.show()
 
-ax4 = fig.add_subplot(2, 2, 4)
-plt.plot(h_eta_nsigs.index, h_eta_nsigs[1], linestyle = "--", marker = "o", color = "g", label = "Centralized", linewidth = 1)
-plt.plot(h_eta_nsigs.index, h_eta_nsigs[2], linestyle = "--", marker = "o", color = (0, 0.5, 0), label = "Centralized", linewidth = 3)
-plt.plot(h_eta_nsigs.index, h_eta_nsigs[3], linestyle = "--", marker = "o", color = "g", label = "Centralized", linewidth = 1)
+###################
+#5
+###################
+fig = plt.figure(facecolor = "white")
+ax4 = fig.add_subplot(1, 1, 1)
+plt.plot(h_eta_nsigs.index[0:5], h_eta_nsigs[1][0:5], linestyle = "--", marker = "o", color = "g", label = "Centralized", linewidth = 1)
+plt.plot(f_eta_nsigs.index[0:5], f_eta_nsigs[1][0:5], linestyle = "-", marker = "^", color = "r", label = "Decentralized", linewidth = 1)
+ax4.legend(loc = "best", fontsize = 11)
+plt.plot(h_eta_nsigs.index[5:16], h_eta_nsigs[1][5:16], linestyle = "--", marker = "o", color = "g", label = "Centralized", linewidth = 1)
+plt.plot(f_eta_nsigs.index[5:16], f_eta_nsigs[1][5:16], linestyle = "-", marker = "^", color = "r", label = "Decentralized", linewidth = 1)
 
-plt.plot(f_eta_nsigs.index, f_eta_nsigs[1], linestyle = "-", marker = "^", color = "r", label = "Decentralized", linewidth = 1)
-plt.plot(f_eta_nsigs.index, f_eta_nsigs[2], linestyle = "-", marker = "^", color = (0.5, 0, 0), label = "Decentralized", linewidth = 3)
-plt.plot(f_eta_nsigs.index, f_eta_nsigs[3], linestyle = "-", marker = "^", color = "r", label = "Decentralized", linewidth = 1)
-ax4.set_ylabel(r'$\nu$', fontsize = 20)
-ax4.set_xlabel("N of Signals", fontsize = 16)
+plt.plot(h_eta_nsigs.index[0:5], h_eta_nsigs[2][0:5], linestyle = "--", marker = "o", color = (0, 0.5, 0), label = "Centralized", linewidth = 3)
+plt.plot(h_eta_nsigs.index[5:16], h_eta_nsigs[2][5:16], linestyle = "--", marker = "o", color = (0, 0.5, 0), label = "Centralized", linewidth = 3)
+plt.plot(h_eta_nsigs.index[0:5], h_eta_nsigs[3][0:5], linestyle = "--", marker = "o", color = "g", label = "Centralized", linewidth = 1)
+plt.plot(h_eta_nsigs.index[5:16], h_eta_nsigs[3][5:16], linestyle = "--", marker = "o", color = "g", label = "Centralized", linewidth = 1)
 
+plt.plot(f_eta_nsigs.index[0:5], f_eta_nsigs[2][0:5], linestyle = "-", marker = "^", color = (0.5, 0, 0), label = "Decentralized", linewidth = 3)
+plt.plot(f_eta_nsigs.index[5:16], f_eta_nsigs[2][5:16], linestyle = "-", marker = "^", color = (0.5, 0, 0), label = "Decentralized", linewidth = 3)
+plt.plot(f_eta_nsigs.index[0:5], f_eta_nsigs[3][0:5], linestyle = "-", marker = "^", color = "r", label = "Decentralized", linewidth = 1)
+plt.plot(f_eta_nsigs.index[5:16], f_eta_nsigs[3][5:16], linestyle = "-", marker = "^", color = "r", label = "Decentralized", linewidth = 1)
+
+#ax4.set_ylabel(r'$\nu$', fontsize = 20)
+#ax4.set_xlabel("N of Signals", fontsize = 16)
+plt.axvline(7.5, color ='k', linestyle='--')
+plt.grid()
+plt.show()
 
 #print(flat.describe())
 #print(hier.describe())
-
-#flat.to_csv(dir_name + "0Results.Flat.csv")
-#hier.to_csv(dir_name + "0Results.Hierarchy.csv")
-
 #sys.modules[__name__].__dict__.clear()
-
-
-
-#Dropping excessive raws in hier to make NEmps equal
-# nemp_p = mutualDistCalc(hier, flat, "NEmps") / hier.NEmps.value_counts() #bernulli distribution coefficient
-# nemp_p.name = "NEmps_p"
-# hier = pd.merge(hier, nemp_p.reset_index(), left_on = "NEmps", right_on = "index")
-# hier.drop("index", 1, inplace = True)
-# hier["Drop"] = np.random.binomial(n = 1, size = hier.shape[0], p = hier.NEmps_p)
-# hier = hier[hier.Drop == 1]
-# hier.drop("Drop", 1, inplace = True)
