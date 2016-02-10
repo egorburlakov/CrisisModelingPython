@@ -92,15 +92,15 @@ def readProcessedFiles(dir_name):
     return flat, hier
 
 dir_name = "C:\\PyCharm Community Edition 5.0.3\\Projects\\CrisisModeling\\"
-#all = readProcessedFiles("C:\\PyCharm Community Edition 5.0.3\\Projects\\CrisisModeling\\")
-#flat = all[0]
-#hier = all[1]
-
-all = readInitialFiles(dir_name)
+all = readProcessedFiles("C:\\PyCharm Community Edition 5.0.3\\Projects\\CrisisModeling\\")
 flat = all[0]
 hier = all[1]
-#hier = hier.append(all[0], ignore_index = True)
-#flat = flat.append(all[1], ignore_index = True)
+
+all = readInitialFiles(dir_name)
+#flat = all[0]
+#hier = all[1]
+hier = hier.append(all[0], ignore_index = True)
+flat = flat.append(all[1], ignore_index = True)
 
 #hier.to_csv(dir_name + "0Results.Hier.csv")
 #flat.to_csv(dir_name + "0Results.Flat.csv")
