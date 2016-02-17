@@ -1,83 +1,105 @@
 import numpy as np
 import networkx as nx
+import pandas as pd
 import bisect #for insort_left
+import time
 from CrisisModel import Crisis
 from OrgModel import Org
 
+viz = False
+cols = ["NSigs", "NSigCaught", "NMissed", "NDecMade", "ImpCaught", "ImpMissed", "ImpDecMade", "NEmps", "MinSpan", "MaxSpan", "MaxLev", "CrT", "TpT"]
+rec = {"NSigs" : [], "NSigCaught" : [], "NMissed" : [], "NDecMade" : [], "ImpCaught" : [], "ImpMissed" : [], "ImpDecMade" : [], "NEmps" : [],
+       "MinSpan" : [], "MaxSpan" : [], "MaxLev" : [], "CrT" : [], "TpT" : []} #record on one experiment
+
 class Event(object):
-    def __init__(self, t_e, sig_id_e, emp_id_e):
+    def __init__(self, t_e, sig_id_e, emp_id_e, s_st = 0):  #stat - status of the signal to be processed
         self.t = t_e #time when the event happens
-        self.sig_id, self.emp_id = sig_id_e, emp_id_e
+        self.sig_id, self.emp_id, self.s_stat = sig_id_e, emp_id_e, s_st
 
     def __eq__(self, other):
         return self.t == other.t
     def __lt__(self, other):
         return self.t < other.t
     def __repr__(self):
-        return [self.t, self.sig_id, self.emp_id].__repr__()
+        return [self.t, self.sig_id, self.emp_id, self.s_stat].__repr__()
 
-def nextStat(o, emp, stat_n, t0_n): #sets employees pars ready for the next stat
-    emp["stat"], emp["t0"]  = stat_n, t0_n
+def nextStat(o, emp, e, stat_n): #sets employees pars ready for the next stat
+    emp["t0"] = e.t + emp["t_proc"] + 1
+    emp["stat"] = stat_n
     emp["t_proc"] = o.t_proc[stat_n]
+    emp["sig_proc"] = e.sig_id if stat_n > 0 else -1
+    emp["t_proc_tot"] += emp["t_proc"]
     return emp
 
 def catchSig(e, cr, o, emp):
-    #print [e.sig_id, e.t, cr.Sigs[e.sig_id]["app"], cr.Sigs[e.sig_id]["dapp"]]
     if emp["stat"] != 0: #If the employee is busy we wait until he is free
         return Event(emp["t0"] + emp["t_proc"] + 1, e.sig_id, e.emp_id)
     elif np.random.choice(2, 1, p = [1 - cr.av, cr.av]): #otherwise he tries to catch the signal
-        print "{} {}".format("Signal", e.sig_id) + " is caught!"
-        o.g.node[e.emp_id] = nextStat(o, emp, emp["stat"] + 1, e.t + 1)
-        return Event(e.t + 1, e.sig_id, e.emp_id) #and moves to the next status if succeeds
+        #print "{} {}".format("Signal", e.sig_id) + " is caught!"
+        e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, e.emp_id, emp["stat"] + 1) #and moves to the next status if succeeds
+        emp = nextStat(o, emp, e, emp["stat"] + 1)
+        rec["NSigCaught"][-1] += 1 #statistics
+        rec["ImpCaught"][-1] += cr.Sigs[e.sig_id]["imp"]
+        return e1
     elif e.t < cr.Sigs[e.sig_id]["app"] + cr.Sigs[e.sig_id]["dapp"]:
         return Event(e.t + 1, e.sig_id, e.emp_id) #if he doesn't succeed to catch, he tries to catch the signal the next time step if the signal is still available
-    print "{} {}".format("Signal", e.sig_id) + " disappeared!"
+    #print "{} {}".format("Signal", e.sig_id) + " disappeared!"
+    rec["NMissed"][-1] += 1 #statistics
+    rec["ImpMissed"][-1] += cr.Sigs[e.sig_id]["imp"]
     return [] #otherwise the signal disappears
 
 def evalSig(e, cr, o, emp):
+    if (emp["sig_proc"] >= 0) & (emp["sig_proc"] != e.sig_id): #If the employee is busy we wait until he is free
+        return Event(emp["t0"] + emp["t_proc"] + 1, e.sig_id, e.emp_id, 1)
     s0 = cr.Sigs[e.sig_id]
     if s0["imp_eval"]: #if someone has already assessed the signal
         imp = min(max(np.random.normal(s0["imp_eval"][-1], o.var_imp_eval), 0), 1)
     else:
         imp = min(max(np.random.normal(s0["imp"], o.var_imp_eval), 0), 1)
-    cr.Sigs[e.sig_id]["imp_eval"].append(imp) #update the list of evaluations from employees
+    s0["imp_eval"].append(imp) #update the list of evaluations from employees
     if imp > o.s2: #transfer signal
-        if s0["ag"] == e.emp_id:
-            o.g.node[e.emp_id] = nextStat(o, emp, 4, e.t + 1) #to decision making
+        if s0["ag"] == e.emp_id: #if it's the decision maker to preparation, otherwise - to transferring
+            e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, e.emp_id, 4)
+            emp = nextStat(o, emp, e, 4)
         else:
-            o.g.node[e.emp_id] = nextStat(o, emp, emp["stat"] + 1, e.t + 1) #to transferring
-        return Event(e.t + 1, e.sig_id, e.emp_id)
+            e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, e.emp_id, emp["stat"] + 1)
+            emp = nextStat(o, emp, e, emp["stat"] + 1)
+        return e1
     elif imp >= o.s1: #active monitoring
-        o.g.node[e.emp_id] = nextStat(o, emp, 3, e.t + 1)
-        return Event(e.t + 1, e.sig_id, e.emp_id)
+        e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, e.emp_id, 3)
+        emp = nextStat(o, emp, e, 3)
+        return e1
     else: #don't process anymore
-        o.g.node[e.emp_id] = nextStat(o, emp, 0, e.t + 1)
+        emp = nextStat(o, emp, e, 0)
         return []
 
 def transSig(e, cr, o, emp):
-    print "{} {}".format("Signal", e.sig_id) + " is transferred!"
-    o.g.node[e.emp_id] = nextStat(o, emp, 0, e.t + 1)
     emp_n = nx.shortest_path(o.g.to_undirected(), e.emp_id, cr.Sigs[e.sig_id]["ag"])[1] #next angent in the path, might be similar to previous if he is a decision maker
-    o.g.node[emp_n] = nextStat(o, o.g.node[emp_n], 0, e.t + 1) #to monitoring
-    return Event(e.t + 1, e.sig_id, emp_n)
+    e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, emp_n, 1) #catch or evaluate?
+    emp = nextStat(o, emp, e, 0) #the employee returns to monitoring status
+    return e1
 
 def actmonSig(e, cr, o, emp):
     s0 = cr.Sigs[e.sig_id]
     imp = min(max(np.random.normal(s0["imp"], o.var_imp_eval), 0), 1)
-    cr.Sigs[e.sig_id]["imp_eval"].append(imp) #update the list of evaluations from employees
+    s0["imp_eval"].append(imp) #update the list of evaluations from employees
     if imp >= (o.s2 + o.s1) / 2: #transfer signal
-        if s0["ag"] == e.emp_id:
-            o.g.node[e.emp_id] = nextStat(o, emp, 4, e.t + 1) #to decision making
+        if s0["ag"] == e.emp_id: #if it's the target agent - preparation, otherwise - transferring
+            e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, e.emp_id, 4)
+            emp = nextStat(o, emp, e, 4)
         else:
-            o.g.node[e.emp_id] = nextStat(o, emp, 2, e.t + 1) #to transferring
-        return Event(e.t + 1, e.sig_id, e.emp_id)
+            e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, e.emp_id, 2)
+            emp = nextStat(o, emp, e, 2)
+        return e1
     else: #don't process anymore
-        o.g.node[e.emp_id] = nextStat(o, emp, 0, e.t + 1)
+        emp = nextStat(o, emp, e, 0)
         return []
 
 def prepSig(e, cr, o, emp):
-    print "{} {}".format("Signal", e.sig_id) + " is processed!"
-    o.g.node[e.emp_id] = nextStat(o, emp, 0, e.t + 1)
+    #print "{} {}".format("Signal", e.sig_id) + " is processed!"
+    emp = nextStat(o, emp, e, 0)
+    rec["NDecMade"][-1] += 1 #statistics
+    rec["ImpDecMade"][-1] += cr.Sigs[e.sig_id]["imp"]
     return []
 
 handleEvent = {0 : catchSig, 1 : evalSig, 2 : transSig, 3 : actmonSig, 4 : prepSig, }
@@ -89,19 +111,62 @@ def runModeling(cr, o):
     while e:
         e1 = e.pop(0)
         if(e1.sig_id >= 0):
-            e1 = handleEvent[o.g.node[e1.emp_id]['stat']](e1, cr, o, o.g.node[e1.emp_id])
+            e1 = handleEvent[e1.s_stat](e1, cr, o, o.g.node[e1.emp_id])
             if e1:
                 bisect.insort_right(e, e1)
-                if o.g.node[e1.emp_id]["stat"] > 0: o.visualizeGraph()
+                if viz & (e1.s_stat > 0): o.visualizeGraph()
         else:
-            print "Modeling is finished!"
             e = []
-    return []
+    return e1.t
 
 #########################`
-#Testing
+#Run Experiment
 #########################
-o = Org(20, 2, 5)
-cr = Crisis(10, 150, 3, 0.5, o) #nsigs, app, dapp, imp
-runModeling(cr, o)
-o.visualizeGraph()
+np.random.seed(2)
+
+#experiment details
+n_exp = 100000
+nemps_min = 5
+nemps_max = 19
+min_span = 2
+max_span = 3
+
+nsigs_min = 3
+nsigs_max = 19
+imp_v = [0.4, 0.6, 0.8]
+p_v = np.ones(imp_v.__len__()) / imp_v.__len__()
+
+def runExperiments():
+    for i in xrange(n_exp):
+        #generate org
+        nemps = np.random.randint(nemps_min, nemps_max + 1)
+        rec["NEmps"].append(nemps)
+        rec["MinSpan"].append(min_span)
+        rec["MaxSpan"].append(max_span)
+        o = Org(nemps, min_span, max_span)
+        #o.visualizeGraph()
+        rec["MaxLev"].append(o.max_lev)
+
+        #generate crisis
+        nsigs = np.random.randint(nsigs_min, nsigs_max)
+        imp = np.random.choice(imp_v, p = p_v, size = 1)
+        rec["NSigs"].append(nsigs)
+        rec["NSigCaught"].append(0)
+        rec["NMissed"].append(0)
+        rec["NDecMade"].append(0)
+        rec["ImpCaught"].append(0)
+        rec["ImpMissed"].append(0)
+        rec["ImpDecMade"].append(0)
+        cr = Crisis(nsigs, 100, 30, imp, o) #nsigs, app, dapp, imp
+        rec["CrT"].append(runModeling(cr, o))
+        #print "{} {} {} {}".format("Modeling #", i, "lasted for", rec["CrT"])
+        rec["ImpCaught"][-1] /= cr.imp_tot
+        rec["ImpMissed"][-1] /= cr.imp_tot
+        rec["ImpDecMade"][-1] /= cr.imp_tot
+        rec["TpT"] = o.g.node[0]["t_proc_tot"]
+
+start = time.time()
+runExperiments()
+end = time.time()
+print "{} {}".format("Execution time is", (end - start))
+#st = st.append(pd.DataFrame(rec, index = [1]), ignore_index = True)

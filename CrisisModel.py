@@ -8,12 +8,14 @@ def getAllPred(o, n): #o - org, g - graph, n - node
     return all_pred
 
 class Crisis(object):
-    av = 0.5 #probability that the signal will be caught
+    av = 0.4 #probability that the signal will be caught
+    imp_tot = 0
 
     def genSig(self, app, dapp, imp, o): #imp goes from 0.1 to 0.6
         s_app = round(np.random.exponential(app))
-        s_dapp = round(np.random.exponential(dapp))
-        s_imp = np.random.gamma(1, imp)
+        s_dapp = max(round(np.random.exponential(dapp)), 1)
+        s_imp = min(np.random.gamma(1, imp), 1)
+        self.imp_tot += s_imp
 
         inf = np.random.randint(1, o.g.number_of_nodes()) #top cannot be a target for the signal
         ag = np.random.choice(getAllPred(o, inf)) #decision maker
