@@ -5,7 +5,7 @@ import networkx as nx
 graph_colors = {0 : "grey", 1 : "green", 2 : "yellow", 3 : "orange", 4 : "red"}
 
 class Org(object):
-    t_proc = {0 : 10, 1 : 50, 2 : 5, 3 : 80, 4 : 100}  #0 - catching, 1 - evaluating, 2 - transferring, 3 - active monitoring, 4 - prepare
+    t_proc = {0 : 10, 1 : 50, 2 : 5, 3 : 100, 4 : 200}  #0 - catching, 1 - evaluating, 2 - transferring, 3 - active monitoring, 4 - prepare
     var_imp_eval = 0.1 #variation in evaluation of the signal's importance
     p_err_transf = 0.1 #probability of error in the choice of the direction for transferring the signal
     max_lev = 0

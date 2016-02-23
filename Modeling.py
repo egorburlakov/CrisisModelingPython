@@ -8,8 +8,8 @@ from CrisisModel import Crisis
 from OrgModel import Org
 
 viz = False
-cols = ["NSigs", "NSigCaught", "NMissed", "NDecMade", "ImpCaught", "ImpMissed", "ImpDecMade", "NEmps", "MinSpan", "MaxSpan", "MaxLev", "CrT", "TpT"]
-rec = {"NSigs" : [], "NSigCaught" : [], "NMissed" : [], "NDecMade" : [], "ImpCaught" : [], "ImpMissed" : [], "ImpDecMade" : [], "NEmps" : [],
+cols = ["NInf", "NSigs", "NSigCaught", "NMissed", "NDecMade", "ImpCaught", "ImpMissed", "ImpDecMade", "NEmps", "MinSpan", "MaxSpan", "MaxLev", "CrT", "TpT"]
+rec = {"NInf" : [], "NSigs" : [], "NSigCaught" : [], "NMissed" : [], "NDecMade" : [], "ImpCaught" : [], "ImpMissed" : [], "ImpDecMade" : [], "NEmps" : [],
        "MinSpan" : [], "MaxSpan" : [], "MaxLev" : [], "CrT" : [], "TpT" : []} #record on one experiment
 
 class Event(object):
@@ -39,15 +39,20 @@ def catchSig(e, cr, o, emp):
         #print "{} {}".format("Signal", e.sig_id) + " is caught!"
         e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, e.emp_id, emp["stat"] + 1) #and moves to the next status if succeeds
         emp = nextStat(o, emp, e, emp["stat"] + 1)
-        rec["NSigCaught"][-1] += 1 #statistics
-        rec["ImpCaught"][-1] += cr.Sigs[e.sig_id]["imp"]
+        imp_caught = cr.Sigs[e.sig_id]["imp"]
+        if imp_caught >= cr.noise_th:
+            rec["NSigCaught"][-1] += 1 #statistics
+            rec["ImpCaught"][-1] += imp_caught
         return e1
     elif e.t < cr.Sigs[e.sig_id]["app"] + cr.Sigs[e.sig_id]["dapp"]:
         return Event(e.t + 1, e.sig_id, e.emp_id) #if he doesn't succeed to catch, he tries to catch the signal the next time step if the signal is still available
-    #print "{} {}".format("Signal", e.sig_id) + " disappeared!"
-    rec["NMissed"][-1] += 1 #statistics
-    rec["ImpMissed"][-1] += cr.Sigs[e.sig_id]["imp"]
-    return [] #otherwise the signal disappears
+    else: #if signal disappears
+        #print "{} {}".format("Signal", e.sig_id) + " disappeared!"
+        imp_caught = cr.Sigs[e.sig_id]["imp"]
+        if imp_caught >= cr.noise_th:
+            rec["NMissed"][-1] += 1 #statistics
+            rec["ImpMissed"][-1] += imp_caught
+        return [] #otherwise the signal disappears
 
 def evalSig(e, cr, o, emp):
     if (emp["sig_proc"] >= 0) & (emp["sig_proc"] != e.sig_id): #If the employee is busy we wait until he is free
@@ -82,7 +87,7 @@ def transSig(e, cr, o, emp):
 
 def actmonSig(e, cr, o, emp):
     s0 = cr.Sigs[e.sig_id]
-    imp = min(max(np.random.normal(s0["imp"], o.var_imp_eval), 0), 1)
+    imp = s0["imp"] # the employees knows the true importance
     s0["imp_eval"].append(imp) #update the list of evaluations from employees
     if imp >= (o.s2 + o.s1) / 2: #transfer signal
         if s0["ag"] == e.emp_id: #if it's the target agent - preparation, otherwise - transferring
@@ -99,8 +104,10 @@ def actmonSig(e, cr, o, emp):
 def prepSig(e, cr, o, emp):
     #print "{} {}".format("Signal", e.sig_id) + " is processed!"
     emp = nextStat(o, emp, e, 0)
-    rec["NDecMade"][-1] += 1 #statistics
-    rec["ImpDecMade"][-1] += cr.Sigs[e.sig_id]["imp"]
+    imp_caught = cr.Sigs[e.sig_id]["imp"]
+    if imp_caught >= cr.noise_th:
+        rec["NDecMade"][-1] += 1 #statistics
+        rec["ImpDecMade"][-1] += imp_caught
     return []
 
 handleEvent = {0 : catchSig, 1 : evalSig, 2 : transSig, 3 : actmonSig, 4 : prepSig, }
@@ -132,12 +139,13 @@ def runExperiments():
         rec["MaxLev"].append(o.max_lev)
 
         #generate crisis
-        nsigs = np.random.randint(nsigs_min, nsigs_max)
+        nsigs = np.random.randint(nsigs_min, nsigs_max + 1)
         imp = np.random.choice(imp_v, p = p_v, size = 1)
         rec["NSigs"].append(nsigs)
         for key in ["NSigCaught", "NMissed", "NDecMade", "ImpCaught", "ImpMissed", "ImpDecMade"]: #initialize stats
             rec[key].append(0)
         cr = Crisis(nsigs, 100, 30, imp, o) #nsigs, app, dapp, imp
+        rec["NInf"].append(len(cr.Sigs))
         rec["CrT"].append(runModeling(cr, o)) # <-------- run modeling
         if i % 100 == 0: print "{} {} {} {}".format("Modeling #", i, "lasted for", rec["CrT"][-1])
         for key in ["ImpCaught", "ImpMissed", "ImpDecMade"]: #normalize stats
@@ -151,22 +159,22 @@ np.random.seed(2)
 
 #experiment details
 n_exp = 10000
-nemps_min = 5
-nemps_max = 500
+nemps_min = 100
+nemps_max = 250
 min_span = 2
 max_span = 3
 
 nsigs_min = 3
-nsigs_max = 12
+nsigs_max = 11
 imp_v = [0.4, 0.6, 0.8]
-p_v = np.ones(imp_v.__len__()) / imp_v.__len__()
+p_v = np.ones(len(imp_v)) / len(imp_v)
 
 start = time.time()
 runExperiments()
 st = pd.DataFrame(rec, columns = cols)
 end = time.time()
 print "{} {}".format("Execution time is", (end - start))
-
+print st
 ######
 #Viz
 ########
