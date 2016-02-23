@@ -3,6 +3,7 @@ import networkx as nx
 import pandas as pd
 import bisect #for insort_left
 import time
+import matplotlib.pyplot as plt
 from CrisisModel import Crisis
 from OrgModel import Org
 
@@ -119,23 +120,6 @@ def runModeling(cr, o):
             e = []
     return e1.t
 
-#########################`
-#Run Experiment
-#########################
-np.random.seed(2)
-
-#experiment details
-n_exp = 100000
-nemps_min = 5
-nemps_max = 19
-min_span = 2
-max_span = 3
-
-nsigs_min = 3
-nsigs_max = 19
-imp_v = [0.4, 0.6, 0.8]
-p_v = np.ones(imp_v.__len__()) / imp_v.__len__()
-
 def runExperiments():
     for i in xrange(n_exp):
         #generate org
@@ -151,22 +135,48 @@ def runExperiments():
         nsigs = np.random.randint(nsigs_min, nsigs_max)
         imp = np.random.choice(imp_v, p = p_v, size = 1)
         rec["NSigs"].append(nsigs)
-        rec["NSigCaught"].append(0)
-        rec["NMissed"].append(0)
-        rec["NDecMade"].append(0)
-        rec["ImpCaught"].append(0)
-        rec["ImpMissed"].append(0)
-        rec["ImpDecMade"].append(0)
+        for key in ["NSigCaught", "NMissed", "NDecMade", "ImpCaught", "ImpMissed", "ImpDecMade"]: #initialize stats
+            rec[key].append(0)
         cr = Crisis(nsigs, 100, 30, imp, o) #nsigs, app, dapp, imp
-        rec["CrT"].append(runModeling(cr, o))
-        #print "{} {} {} {}".format("Modeling #", i, "lasted for", rec["CrT"])
-        rec["ImpCaught"][-1] /= cr.imp_tot
-        rec["ImpMissed"][-1] /= cr.imp_tot
-        rec["ImpDecMade"][-1] /= cr.imp_tot
+        rec["CrT"].append(runModeling(cr, o)) # <-------- run modeling
+        if i % 100 == 0: print "{} {} {} {}".format("Modeling #", i, "lasted for", rec["CrT"][-1])
+        for key in ["ImpCaught", "ImpMissed", "ImpDecMade"]: #normalize stats
+            rec[key][-1] /= cr.imp_tot
         rec["TpT"] = o.g.node[0]["t_proc_tot"]
+
+#########################`
+#Run Experiment
+#########################
+np.random.seed(2)
+
+#experiment details
+n_exp = 10000
+nemps_min = 5
+nemps_max = 500
+min_span = 2
+max_span = 3
+
+nsigs_min = 3
+nsigs_max = 12
+imp_v = [0.4, 0.6, 0.8]
+p_v = np.ones(imp_v.__len__()) / imp_v.__len__()
 
 start = time.time()
 runExperiments()
+st = pd.DataFrame(rec, columns = cols)
 end = time.time()
 print "{} {}".format("Execution time is", (end - start))
-#st = st.append(pd.DataFrame(rec, index = [1]), ignore_index = True)
+
+######
+#Viz
+########
+
+#print st["ImpCaught"].groupby([st["NSigs"], rec["NEmps"]]).mean().unstack()
+
+p = st["ImpCaught"].groupby([rec["NEmps"]]).mean()
+print p
+fig = plt.figure(facecolor = "white")
+ax2 = fig.add_subplot(1, 1, 1)
+plt.plot(p.index, p, linestyle = "--", marker = "o", color = "g")
+plt.grid()
+plt.show()
