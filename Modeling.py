@@ -3,11 +3,11 @@ import networkx as nx
 import pandas as pd
 import bisect #for insort_left
 import time
+from datetime import datetime
 import matplotlib.pyplot as plt
 from CrisisModel import Crisis
 from OrgModel import Org
 
-viz = False
 cols = ["NInf", "NSigs", "NSigCaught", "NMissed", "NDecMade", "ImpCaught", "ImpMissed", "ImpDecMade", "NEmps", "MinSpan", "MaxSpan", "MaxLev", "CrT", "TpT"]
 rec = {"NInf" : [], "NSigs" : [], "NSigCaught" : [], "NMissed" : [], "NDecMade" : [], "ImpCaught" : [], "ImpMissed" : [], "ImpDecMade" : [], "NEmps" : [],
        "MinSpan" : [], "MaxSpan" : [], "MaxLev" : [], "CrT" : [], "TpT" : []} #record on one experiment
@@ -34,21 +34,22 @@ def nextStat(o, emp, e, stat_n): #sets employees pars ready for the next stat
 
 def catchSig(e, cr, o, emp):
     if emp["stat"] != 0: #If the employee is busy we wait until he is free
+       # print "{} {}".format("Start 1", time.time() - start)
         return Event(emp["t0"] + emp["t_proc"] + 1, e.sig_id, e.emp_id)
-    elif np.random.choice(2, 1, p = [1 - cr.av, cr.av]): #otherwise he tries to catch the signal
-        #print "{} {}".format("Signal", e.sig_id) + " is caught!"
+
+    s0 = cr.Sigs[e.sig_id]
+    if np.random.choice(2, 1, p = [1 - cr.av, cr.av]): #otherwise he tries to catch the signal
         e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, e.emp_id, emp["stat"] + 1) #and moves to the next status if succeeds
         emp = nextStat(o, emp, e, emp["stat"] + 1)
-        imp_caught = cr.Sigs[e.sig_id]["imp"]
+        imp_caught = s0["imp"]
         if imp_caught >= cr.noise_th:
             rec["NSigCaught"][-1] += 1 #statistics
             rec["ImpCaught"][-1] += imp_caught
         return e1
-    elif e.t < cr.Sigs[e.sig_id]["app"] + cr.Sigs[e.sig_id]["dapp"]:
+    elif e.t < s0["app"] + s0["dapp"]:
         return Event(e.t + 1, e.sig_id, e.emp_id) #if he doesn't succeed to catch, he tries to catch the signal the next time step if the signal is still available
     else: #if signal disappears
-        #print "{} {}".format("Signal", e.sig_id) + " disappeared!"
-        imp_caught = cr.Sigs[e.sig_id]["imp"]
+        imp_caught = s0["imp"]
         if imp_caught >= cr.noise_th:
             rec["NMissed"][-1] += 1 #statistics
             rec["ImpMissed"][-1] += imp_caught
@@ -57,6 +58,7 @@ def catchSig(e, cr, o, emp):
 def evalSig(e, cr, o, emp):
     if (emp["sig_proc"] >= 0) & (emp["sig_proc"] != e.sig_id): #If the employee is busy we wait until he is free
         return Event(emp["t0"] + emp["t_proc"] + 1, e.sig_id, e.emp_id, 1)
+
     s0 = cr.Sigs[e.sig_id]
     if s0["imp_eval"]: #if someone has already assessed the signal
         imp = min(max(np.random.normal(s0["imp_eval"][-1], o.var_imp_eval), 0), 1)
@@ -80,7 +82,7 @@ def evalSig(e, cr, o, emp):
         return []
 
 def transSig(e, cr, o, emp):
-    emp_n = nx.shortest_path(o.g.to_undirected(), e.emp_id, cr.Sigs[e.sig_id]["ag"])[1] #next angent in the path, might be similar to previous if he is a decision maker
+    emp_n = nx.shortest_path(o.g, e.emp_id, cr.Sigs[e.sig_id]["ag"])[1] #next angent in the path, might be similar to previous if he is a decision maker
     e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, emp_n, 1) #catch or evaluate?
     emp = nextStat(o, emp, e, 0) #the employee returns to monitoring status
     return e1
@@ -119,72 +121,77 @@ def runModeling(cr, o):
     while e:
         e1 = e.pop(0)
         if(e1.sig_id >= 0):
+           # print "{} {} {}".format(e1.s_stat, "Start", time.time() - start)
             e1 = handleEvent[e1.s_stat](e1, cr, o, o.g.node[e1.emp_id])
             if e1:
+         #       print "{} {} {}".format(e1.s_stat, "Event handled", time.time() - start)
                 bisect.insort_right(e, e1)
-                if viz & (e1.s_stat > 0): o.visualizeGraph()
+                if gen_pars["VizOrg"] & (e1.s_stat > 0): o.visualizeGraph()
         else:
             e = []
     return e1.t
 
 def runExperiments():
-    for i in xrange(n_exp):
+    for i in xrange(gen_pars["NExp"]):
         #generate org
-        nemps = np.random.randint(nemps_min, nemps_max + 1)
+        nemps = np.random.randint(org_pars[gen_pars["Scen"]]["NEmps_min"], org_pars[gen_pars["Scen"]]["NEmps_max"] + 1)
         rec["NEmps"].append(nemps)
+        min_span = org_pars[gen_pars["Scen"]]["SpanMin"]
+        max_span = org_pars[gen_pars["Scen"]]["SpanMax"]
         rec["MinSpan"].append(min_span)
         rec["MaxSpan"].append(max_span)
         o = Org(nemps, min_span, max_span)
-        #o.visualizeGraph()
+        if gen_pars["VizOrg"]: o.visualizeGraph()
         rec["MaxLev"].append(o.max_lev)
 
         #generate crisis
-        nsigs = np.random.randint(nsigs_min, nsigs_max + 1)
-        imp = np.random.choice(imp_v, p = p_v, size = 1)
+        nsigs = np.random.randint(cr_pars["NSig_min"], cr_pars["NSig_max"] + 1)
+        imp = np.random.choice(cr_pars["Imp_modes"], p = p_v, size = 1)
         rec["NSigs"].append(nsigs)
         for key in ["NSigCaught", "NMissed", "NDecMade", "ImpCaught", "ImpMissed", "ImpDecMade"]: #initialize stats
             rec[key].append(0)
-        cr = Crisis(nsigs, 100, 30, imp, o) #nsigs, app, dapp, imp
+        cr = Crisis(nsigs, cr_pars["AppT"], cr_pars["DappT"], imp, o) #nsigs, app, dapp, imp
         rec["NInf"].append(len(cr.Sigs))
         rec["CrT"].append(runModeling(cr, o)) # <-------- run modeling
-        if i % 100 == 0: print "{} {} {} {}".format("Modeling #", i, "lasted for", rec["CrT"][-1])
+        if i % 100 == 0: print "{} {} {} {} {} {}".format("Modeling #", i, "lasted for", rec["CrT"][-1], "and took", time.time() - start)
         for key in ["ImpCaught", "ImpMissed", "ImpDecMade"]: #normalize stats
             rec[key][-1] /= cr.imp_tot
         rec["TpT"] = o.g.node[0]["t_proc_tot"]
 
+def vizVector(p, sb_plot, col):
+    fig.add_subplot(sb_plot)
+    plt.plot(p.index, p, linestyle = "--", marker = "o", color = col)
+    plt.grid()
+
 #########################`
 #Run Experiment
 #########################
-np.random.seed(2)
-
 #experiment details
-n_exp = 10000
-nemps_min = 100
-nemps_max = 250
-min_span = 2
-max_span = 3
+gen_pars = {"Seed" : 2, "Scen" : "Nasa", "NExp" : 50, "ToCSV" : False, "VizOrg" : False}
+org_pars = {"Nasa" : {"NEmps_min" : 22000, "NEmps_max" : 22500, "SpanMin" : 2, "SpanMax" : 8},
+            "SmallOrg" : {"NEmps_min" : 5, "NEmps_max" : 19, "SpanMin" : 2, "SpanMax" : 3},
+            "MiddleOrg" : {"NEmps_min" : 100, "NEmps_max" : 250, "SpanMin" : 2, "SpanMax" : 4},
+            "BigOrg" : {"NEmps_min" : 250, "NEmps_max" : 1000, "SpanMin" : 2, "SpanMax" : 5}}
+cr_pars = {"NSig_min" : 5, "NSig_max" : 11, "AppT" : 90, "DappT" : 30, "Imp_modes" : [0.45, 0.55]}
+p_v = np.ones(len(cr_pars["Imp_modes"])) / len(cr_pars["Imp_modes"])
 
-nsigs_min = 3
-nsigs_max = 11
-imp_v = [0.4, 0.6, 0.8]
-p_v = np.ones(len(imp_v)) / len(imp_v)
-
+#Run experiments
+np.random.seed(gen_pars["Seed"])
 start = time.time()
 runExperiments()
 st = pd.DataFrame(rec, columns = cols)
-end = time.time()
-print "{} {}".format("Execution time is", (end - start))
-print st
-######
-#Viz
-########
+#print st
+print "{} {}".format("Execution time is", (time.time() - start))
+if gen_pars["ToCSV"]: st.to_csv("{}_{}_{}.{}".format("ModelingResults", gen_pars["Scne"], datetime.now().strftime("%Y-%m-%d %H_%M_%S"), "csv"), sep=';')
+
+#########################`
+#Vizualize results
+#########################`
+fig = plt.figure(facecolor = "white")
 
 #print st["ImpCaught"].groupby([st["NSigs"], rec["NEmps"]]).mean().unstack()
-
-p = st["ImpCaught"].groupby([rec["NEmps"]]).mean()
-print p
-fig = plt.figure(facecolor = "white")
-ax2 = fig.add_subplot(1, 1, 1)
-plt.plot(p.index, p, linestyle = "--", marker = "o", color = "g")
-plt.grid()
+p1 = st["ImpCaught"].groupby([rec["NEmps"]]).mean()
+vizVector(p1, 121, "g")
+p2 = st["ImpCaught"].groupby([rec["NSigs"]]).mean()
+vizVector(p2, 122, "r")
 plt.show()

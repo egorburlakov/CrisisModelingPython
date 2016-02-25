@@ -1,12 +1,15 @@
 import numpy as np
 import pylab
 import networkx as nx
+import time
 
 graph_colors = {0 : "grey", 1 : "green", 2 : "yellow", 3 : "orange", 4 : "red"}
 
+start = time.time()
+
 class Org(object):
     t_proc = {0 : 10, 1 : 50, 2 : 5, 3 : 100, 4 : 200}  #0 - catching, 1 - evaluating, 2 - transferring, 3 - active monitoring, 4 - prepare
-    var_imp_eval = 0.1 #variation in evaluation of the signal's importance
+    var_imp_eval = 0.2 #variation in evaluation of the signal's importance
     p_err_transf = 0.1 #probability of error in the choice of the direction for transferring the signal
     max_lev = 0
 
@@ -20,7 +23,6 @@ class Org(object):
 
     def addNodes(self, nodes_act, n_ch, n_ag_cur):
         if len(nodes_act) > 0: n_act = nodes_act.pop(0)
-
         l_n = self.g.node[n_act]["lev"] + 1
         for i in xrange(n_ch):
             self.g.add_edge(n_act, n_ag_cur + i)
@@ -30,7 +32,7 @@ class Org(object):
         return nodes_act
 
     def createGraph(self, n_ag, min_span, max_span):
-        self.g = nx.DiGraph() #init graph
+        self.g = nx.Graph() #nx.DiGraph() <- very slowly #init graph
         self.g.add_node(0, lev = 0) #root
         self.setNodePars(0, 0)
 
@@ -38,7 +40,6 @@ class Org(object):
         n_ag_cur = self.g.number_of_nodes()
         while n_ag_cur < n_ag - max_span:
             n_ch = np.random.randint(min_span, max_span + 1) # how many nodes to add
-
             nodes_act = self.addNodes(nodes_act, n_ch, n_ag_cur)
             n_ag_cur = self.g.number_of_nodes()
         self.addNodes(nodes_act, n_ag - n_ag_cur, n_ag_cur) # last leafs to have the precise  number of agents

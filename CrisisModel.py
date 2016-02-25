@@ -1,14 +1,8 @@
 import numpy as np
-
-def getAllPred(o, n): #o - org, g - graph, n - node #get all predecessors in the graph of organisation
-    all_pred = []
-    while o.g.predecessors(n):
-        all_pred.append(o.g.predecessors(n)[0])
-        n = all_pred[-1]
-    return all_pred
+import networkx as nx
 
 class Crisis(object):
-    av = 0.3 #probability that the signal will be caught
+    av = 0.05 #probability that the signal will be caught
     noise_th = 0.5 #threshold for signals to be not noise
     imp_tot = 0
 
@@ -19,7 +13,7 @@ class Crisis(object):
         if s_imp >= self.noise_th: self.imp_tot += s_imp
 
         inf = np.random.randint(1, o.g.number_of_nodes()) #top cannot be a target for the signal
-        ag = np.random.choice(getAllPred(o, inf)) #decision maker
+        ag = np.random.choice(nx.shortest_path(o.g, inf, 0)) #decision maker
         return {"app" : s_app, "dapp" : s_dapp, "imp" : s_imp, "imp_eval" : [], "inf" : inf, "ag" : ag, "av" : self.av} #if needed - can add emp_eval
 
     def __init__(self, nsigs, app, dapp, imp, o): # # of sigs, t of appearance, mean t for the lifespan of signals, mean importance, org
