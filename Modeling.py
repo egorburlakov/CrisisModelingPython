@@ -8,9 +8,9 @@ import matplotlib.pyplot as plt
 from CrisisModel import Crisis
 from OrgModel import Org
 
-cols = ["NInf", "NSigs", "NSigCaught", "NMissed", "NDecMade", "ImpCaught", "ImpMissed", "ImpDecMade", "NEmps", "MinSpan", "MaxSpan", "MaxLev", "CrT", "TpT"]
+cols = ["NInf", "NSigs", "NSigCaught", "NMissed", "NDecMade", "ImpCaught", "ImpMissed", "ImpDecMade", "NEmps", "MinSpan", "MaxSpan", "MaxLev", "CrT", "EmpT", "TpT"]
 rec = {"NInf" : [], "NSigs" : [], "NSigCaught" : [], "NMissed" : [], "NDecMade" : [], "ImpCaught" : [], "ImpMissed" : [], "ImpDecMade" : [], "NEmps" : [],
-       "MinSpan" : [], "MaxSpan" : [], "MaxLev" : [], "CrT" : [], "TpT" : []} #record on one experiment
+       "MinSpan" : [], "MaxSpan" : [], "MaxLev" : [], "CrT" : [], "EmpT" : [], "TpT" : []} #record on one experiment
 
 class Event(object):
     def __init__(self, t_e, sig_id_e, emp_id_e, s_st = 0):  #stat - status of the signal to be processed
@@ -27,17 +27,22 @@ class Event(object):
 def nextStat(o, emp, e, stat_n): #sets employees pars ready for the next stat
     emp["t0"] = e.t + emp["t_proc"] + 1
     emp["stat"] = stat_n
-    emp["t_proc"] = o.t_proc[stat_n]
+    emp["t_proc"] = np.random.gamma(o.t_proc[stat_n], 1) #mean = var = o.t_proc[stat_n]
     emp["sig_proc"] = e.sig_id if stat_n > 0 else -1
     emp["t_proc_tot"] += emp["t_proc"]
     return emp
 
 def catchSig(e, cr, o, emp):
     if emp["stat"] != 0: #If the employee is busy we wait until he is free
-       # print "{} {}".format("Start 1", time.time() - start)
         return Event(emp["t0"] + emp["t_proc"] + 1, e.sig_id, e.emp_id)
 
     s0 = cr.Sigs[e.sig_id]
+    if e.t > s0["app"] + s0["dapp"]: #if signal disappears
+        imp_caught = s0["imp"]
+        if imp_caught >= cr.noise_th:
+            rec["NMissed"][-1] += 1 #statistics
+            rec["ImpMissed"][-1] += imp_caught
+        return []
     if np.random.choice(2, 1, p = [1 - cr.av, cr.av]): #otherwise he tries to catch the signal
         e1 = Event(e.t + emp["t_proc"] + 1, e.sig_id, e.emp_id, emp["stat"] + 1) #and moves to the next status if succeeds
         emp = nextStat(o, emp, e, emp["stat"] + 1)
@@ -46,14 +51,9 @@ def catchSig(e, cr, o, emp):
             rec["NSigCaught"][-1] += 1 #statistics
             rec["ImpCaught"][-1] += imp_caught
         return e1
-    elif e.t < s0["app"] + s0["dapp"]:
-        return Event(e.t + 1, e.sig_id, e.emp_id) #if he doesn't succeed to catch, he tries to catch the signal the next time step if the signal is still available
-    else: #if signal disappears
-        imp_caught = s0["imp"]
-        if imp_caught >= cr.noise_th:
-            rec["NMissed"][-1] += 1 #statistics
-            rec["ImpMissed"][-1] += imp_caught
-        return [] #otherwise the signal disappears
+    else:
+        return Event(e.t + np.random.gamma(o.t_proc[0]), e.sig_id, e.emp_id) #if he doesn't succeed to catch, he tries to catch the signal the next time step if the signal is still available
+
 
 def evalSig(e, cr, o, emp):
     if (emp["sig_proc"] >= 0) & (emp["sig_proc"] != e.sig_id): #If the employee is busy we wait until he is free
@@ -104,7 +104,6 @@ def actmonSig(e, cr, o, emp):
         return []
 
 def prepSig(e, cr, o, emp):
-    #print "{} {}".format("Signal", e.sig_id) + " is processed!"
     emp = nextStat(o, emp, e, 0)
     imp_caught = cr.Sigs[e.sig_id]["imp"]
     if imp_caught >= cr.noise_th:
@@ -156,23 +155,29 @@ def runExperiments():
         if i % 100 == 0: print "{} {} {} {} {} {}".format("Modeling #", i, "lasted for", rec["CrT"][-1], "and took", time.time() - start)
         for key in ["ImpCaught", "ImpMissed", "ImpDecMade"]: #normalize stats
             rec[key][-1] /= cr.imp_tot
-        rec["TpT"] = o.g.node[0]["t_proc_tot"]
+        rec["EmpT"].append(np.sum([o.g.node.items()[i][1]["t_proc_tot"] for i in xrange(o.g.number_of_nodes())])) #summing up all t_proc_tot for all employees
+        rec["TpT"].append(o.g.node[0]["t_proc_tot"])
 
-def vizVector(p, sb_plot, col):
-    fig.add_subplot(sb_plot)
-    plt.plot(p.index, p, linestyle = "--", marker = "o", color = col)
+def vizVector(p, sb_plot, col, x_lab = "", y_lab = "ImpCaught", hist = False):
+    ax = fig.add_subplot(sb_plot)
+    if hist:
+        plt.hist(p, color = col)
+    else:
+        plt.plot(p.index, p, linestyle = "--", marker = "o", color = col)
+        ax.set_ylabel(y_lab)
+        ax.set_xlabel(x_lab, fontsize = 12)
     plt.grid()
 
 #########################`
 #Run Experiment
 #########################
 #experiment details
-gen_pars = {"Seed" : 2, "Scen" : "Nasa", "NExp" : 50, "ToCSV" : False, "VizOrg" : False}
+gen_pars = {"Seed" : 2, "Scen" : "SmallOrg", "NExp" : 100000, "ToCSV" : False, "VizOrg" : False}
 org_pars = {"Nasa" : {"NEmps_min" : 22000, "NEmps_max" : 22500, "SpanMin" : 2, "SpanMax" : 8},
             "SmallOrg" : {"NEmps_min" : 5, "NEmps_max" : 19, "SpanMin" : 2, "SpanMax" : 3},
             "MiddleOrg" : {"NEmps_min" : 100, "NEmps_max" : 250, "SpanMin" : 2, "SpanMax" : 4},
             "BigOrg" : {"NEmps_min" : 250, "NEmps_max" : 1000, "SpanMin" : 2, "SpanMax" : 5}}
-cr_pars = {"NSig_min" : 5, "NSig_max" : 11, "AppT" : 90, "DappT" : 30, "Imp_modes" : [0.45, 0.55]}
+cr_pars = {"NSig_min" : 5, "NSig_max" : 11, "AppT" : 16, "DappT" : 24, "Imp_modes" : [0.35, 0.5]}
 p_v = np.ones(len(cr_pars["Imp_modes"])) / len(cr_pars["Imp_modes"])
 
 #Run experiments
@@ -191,7 +196,10 @@ fig = plt.figure(facecolor = "white")
 
 #print st["ImpCaught"].groupby([st["NSigs"], rec["NEmps"]]).mean().unstack()
 p1 = st["ImpCaught"].groupby([rec["NEmps"]]).mean()
-vizVector(p1, 121, "g")
-p2 = st["ImpCaught"].groupby([rec["NSigs"]]).mean()
-vizVector(p2, 122, "r")
+vizVector(p1, 221, "g", "NEmps")
+p2 = st["EmpT"].groupby([rec["NEmps"]]).mean()
+vizVector(p2, 222, "r", "NEmps", "EmpT")
+p3 = st["ImpCaught"].groupby([rec["MaxLev"]]).mean()
+vizVector(p3, 223, "r", "MaxLev")
+vizVector(st["ImpCaught"], 224, "r", "", "", True)
 plt.show()
